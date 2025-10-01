@@ -8,3 +8,4 @@ chromadb
 langchain
 psycopg2-binary
 gunicorn
+google-genai
