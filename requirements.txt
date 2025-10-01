@@ -1,0 +1,10 @@
+Django
+djangorestframework
+requests
+pypdf2
+python-dotenv
+python-docx
+chromadb
+langchain
+psycopg2-binary
+gunicorn
