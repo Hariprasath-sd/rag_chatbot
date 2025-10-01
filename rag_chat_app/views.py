@@ -20,9 +20,9 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from pypdf import PdfReader
 from docx import Document as DocxDocument
 
+EMBEDDING_MODEL = "gemini-embedding-001" 
 LLM_MODEL = "gemini-2.5-flash"
 HISTORY_LIMIT = 5 
-
 CHROMA_PATH = "./chroma_db" 
 
 try:
@@ -76,8 +76,20 @@ except ImportError:
                 def get(self, **kwargs): return User()
             return Manager()
 
+def get_gemini_client():
+    """
+    Initializes and returns the Gemini client with the API key 
+    from the GEMINI_API_KEY environment variable.
+    """
+    api_key = os.environ.get('GEMINI_API_KEY')
+    if not api_key:
+        # Note: This is crucial for debugging the API key issue.
+        raise ValueError("GEMINI_API_KEY environment variable not set. Cannot initialize Gemini client.")
+    
+    return genai.Client(api_key=api_key)
 
 def get_chroma_client():
+    """Returns the persistent ChromaDB client."""
     return chromadb.PersistentClient(path=CHROMA_PATH)
 
 def extract_text_from_file(file_obj) -> str:
@@ -100,9 +112,13 @@ def extract_text_from_file(file_obj) -> str:
     return text
 
 def index_document_in_chroma(document_obj, raw_text: str) -> bool:
-    """Chunks text and inserts embeddings into a new Chroma collection."""
+    """
+    Chunks text, generates Gemini embeddings explicitly, and inserts them 
+    into a new Chroma collection.
+    """
     collection_name = f"doc-{document_obj.id}-{uuid.uuid4().hex[:8]}"
     
+    # 1. Chunk the text
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=1000,
         chunk_overlap=300, 
@@ -114,12 +130,29 @@ def index_document_in_chroma(document_obj, raw_text: str) -> bool:
     if not texts:
         return False
 
-    client = get_chroma_client()
     try:
-        collection = client.create_collection(name=collection_name)
+        # 2. Initialize Gemini Client and Generate Embeddings
+        client = get_gemini_client() 
+        
+        # Call the embed_content API
+        print(f"Generating embeddings for {len(texts)} chunks using {EMBEDDING_MODEL}...")
+        embedding_response = client.models.embed_content(
+            model=EMBEDDING_MODEL,
+            contents=texts,
+        )
+        
+        embeddings = [e.values for e in embedding_response.embeddings] 
+        
+        if len(embeddings) != len(texts):
+            print("Gemini embedding failed to return vectors for all chunks.")
+            return False
+            
+        chroma_client = get_chroma_client()
+        collection = chroma_client.create_collection(name=collection_name) 
         
         collection.add(
             documents=texts,
+            embeddings=embeddings, 
             ids=[f"{document_obj.id}-{i}" for i in range(len(texts))]
         )
         
@@ -127,8 +160,14 @@ def index_document_in_chroma(document_obj, raw_text: str) -> bool:
         document_obj.is_ready = True
         document_obj.save()
         return True
+    except ValueError as e:
+        print(f"Gemini Client Error: {e}")
+        return False
+    except APIError as e:
+        print(f"Gemini Embedding API Error: {e}")
+        return False
     except Exception as e:
-        print(f"Chroma indexing error: {e}")
+        print(f"Chroma indexing or general error: {e}")
         return False
 
 def index(request):
@@ -203,6 +242,8 @@ class DocumentListCreateView(APIView):
             
         if not index_document_in_chroma(document, raw_text):
             document.delete()
+            if 'GEMINI_API_KEY' not in os.environ:
+                 return Response({'error': 'Failed to index document: GEMINI_API_KEY is not configured on the server.'}, status=500)
             return Response({'error': 'Failed to index document in vector database.'}, status=500)
 
         return Response({
@@ -212,7 +253,10 @@ class DocumentListCreateView(APIView):
         }, status=status.HTTP_201_CREATED)
 
 def retrieve_rag_context(document_id, query_text):
-    """Retrieves relevant text chunks from ChromaDB using similarity search."""
+    """
+    Generates query embedding using Gemini and retrieves relevant text chunks 
+    from ChromaDB via vector similarity search.
+    """
     try:
         document = Document.objects.get(id=document_id)
         collection_name = document.collection_name
@@ -220,11 +264,24 @@ def retrieve_rag_context(document_id, query_text):
         if not collection_name:
              return None, None
 
-        client = get_chroma_client()
-        collection = client.get_collection(name=collection_name)
+        # Initialize Gemini Client for Embedding
+        client = get_gemini_client()
+        
+        # Generate Query Embedding
+        print(f"Generating query embedding using {EMBEDDING_MODEL}...")
+        query_embedding_response = client.models.embed_content(
+            model=EMBEDDING_MODEL,
+            contents=[query_text],
+        )
+        
+        query_embedding = query_embedding_response.embeddings[0].values
+
+        # Using the query embedding to search Chroma
+        chroma_client = get_chroma_client()
+        collection = chroma_client.get_collection(name=collection_name)
         
         results = collection.query(
-            query_texts=[query_text],
+            query_embeddings=[query_embedding], 
             n_results=5, 
             include=['documents']
         )
@@ -240,8 +297,14 @@ def retrieve_rag_context(document_id, query_text):
         
     except Document.DoesNotExist:
         return None, None
+    except ValueError as e:
+        print(f"Gemini Client Error during retrieval: {e}")
+        return None, None
+    except APIError as e:
+        print(f"Gemini Embedding API Error during retrieval: {e}")
+        return None, None
     except Exception as e:
-        print(f"Chroma retrieval error: {e}")
+        print(f"Chroma retrieval or general error: {e}")
         return None, None
 
 
@@ -311,7 +374,7 @@ def send_message(request, thread_id):
 def _call_gemini_api(contents, system_prompt, use_google_search):
     """Handles the synchronous API call using the Google GenAI SDK."""
     try:
-        client = genai.Client()
+        client = get_gemini_client()
         
         config_params = {
             "system_instruction": system_prompt
@@ -326,26 +389,17 @@ def _call_gemini_api(contents, system_prompt, use_google_search):
             config=config_params
         )
 
-        text = response.text if response.text else "I couldn't generate a response."
-        sources = []
-        if response.candidates and response.candidates[0].grounding_metadata:
-            grounding = response.candidates[0].grounding_metadata
-            
-            if hasattr(grounding, 'grounding_attributions') and grounding.grounding_attributions:
-                sources = [
-                    {'uri': attr.web.uri, 'title': attr.web.title}
-                    for attr in grounding.grounding_attributions
-                    if attr.web and attr.web.uri and attr.web.title
-                ]
+        return response.text if response.text else "I couldn't generate a response."
         
-        return text, sources
-
+    except ValueError as e:
+        print(f"Gemini Client Error: {e}")
+        return f"Error: Failed to connect to the AI model. Details: {e}"
     except APIError as e:
         print(f"Gemini API Error: {e}")
-        return f"Error: Failed to connect to the AI model. Details: {e}", []
+        return f"Error: Failed to connect to the AI model. Details: {e}"
     except Exception as e:
         print(f"Unexpected Error during LLM call: {e}")
-        return "Error: An unexpected internal error occurred during the AI call.", []
+        return "Error: An unexpected internal error occurred during the AI call."
 
 @csrf_exempt
 @require_http_methods(['DELETE'])
