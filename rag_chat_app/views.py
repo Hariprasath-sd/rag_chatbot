@@ -23,7 +23,10 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from pypdf import PdfReader
 from docx import Document as DocxDocument
 
+<<<<<<< HEAD
 # --- Configuration Constants ---
+=======
+>>>>>>> 6fcbea783ef614ff42be29c73e618348bc621986
 EMBEDDING_MODEL = "gemini-embedding-001" 
 LLM_MODEL = "gemini-2.5-flash"
 HISTORY_LIMIT = 5 
@@ -47,6 +50,7 @@ except ImportError:
                 def exists(self): return False
             return Manager()
 
+<<<<<<< HEAD
 # --- Authentication Views (NEW) ---
 
 def register_view(request):
@@ -116,6 +120,22 @@ def get_gemini_client():
 
 def get_chroma_client():
     # ... (content remains the same)
+=======
+def get_gemini_client():
+    """
+    Initializes and returns the Gemini client with the API key 
+    from the GEMINI_API_KEY environment variable.
+    """
+    api_key = os.environ.get('GEMINI_API_KEY')
+    if not api_key:
+        # Note: This is crucial for debugging the API key issue.
+        raise ValueError("GEMINI_API_KEY environment variable not set. Cannot initialize Gemini client.")
+    
+    return genai.Client(api_key=api_key)
+
+def get_chroma_client():
+    """Returns the persistent ChromaDB client."""
+>>>>>>> 6fcbea783ef614ff42be29c73e618348bc621986
     return chromadb.PersistentClient(path=CHROMA_PATH)
 
 def extract_text_from_file(file_obj) -> str:
@@ -137,6 +157,7 @@ def extract_text_from_file(file_obj) -> str:
     return text
 
 def index_document_in_chroma(document_obj, raw_text: str) -> bool:
+<<<<<<< HEAD
     # ... (content remains the same)
     collection_name = f"doc-{document_obj.id}-{uuid.uuid4().hex[:8]}"
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=300, length_function=len, is_separator_regex=False)
@@ -149,6 +170,43 @@ def index_document_in_chroma(document_obj, raw_text: str) -> bool:
         embeddings = [e.values for e in embedding_response.embeddings] 
         if len(embeddings) != len(texts): return False
 
+=======
+    """
+    Chunks text, generates Gemini embeddings explicitly, and inserts them 
+    into a new Chroma collection.
+    """
+    collection_name = f"doc-{document_obj.id}-{uuid.uuid4().hex[:8]}"
+    
+    # 1. Chunk the text
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=1000,
+        chunk_overlap=300, 
+        length_function=len,
+        is_separator_regex=False,
+    )
+    texts = text_splitter.split_text(raw_text)
+    
+    if not texts:
+        return False
+
+    try:
+        # 2. Initialize Gemini Client and Generate Embeddings
+        client = get_gemini_client() 
+        
+        # Call the embed_content API
+        print(f"Generating embeddings for {len(texts)} chunks using {EMBEDDING_MODEL}...")
+        embedding_response = client.models.embed_content(
+            model=EMBEDDING_MODEL,
+            contents=texts,
+        )
+        
+        embeddings = [e.values for e in embedding_response.embeddings] 
+        
+        if len(embeddings) != len(texts):
+            print("Gemini embedding failed to return vectors for all chunks.")
+            return False
+            
+>>>>>>> 6fcbea783ef614ff42be29c73e618348bc621986
         chroma_client = get_chroma_client()
         collection = chroma_client.create_collection(name=collection_name) 
         
@@ -161,8 +219,18 @@ def index_document_in_chroma(document_obj, raw_text: str) -> bool:
         document_obj.is_ready = True
         document_obj.save()
         return True
+    except ValueError as e:
+        print(f"Gemini Client Error: {e}")
+        return False
+    except APIError as e:
+        print(f"Gemini Embedding API Error: {e}")
+        return False
     except Exception as e:
+<<<<<<< HEAD
         print(f"Indexing Error: {e}")
+=======
+        print(f"Chroma indexing or general error: {e}")
+>>>>>>> 6fcbea783ef614ff42be29c73e618348bc621986
         return False
 
 
@@ -244,8 +312,13 @@ class DocumentListCreateView(APIView):
         if not index_document_in_chroma(document, raw_text):
             document.delete()
             if 'GEMINI_API_KEY' not in os.environ:
+<<<<<<< HEAD
                  return Response({'error': 'Failed to index document: GEMINI_API_KEY is not configured on the server.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
             return Response({'error': 'Failed to index document in vector database.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+=======
+                 return Response({'error': 'Failed to index document: GEMINI_API_KEY is not configured on the server.'}, status=500)
+            return Response({'error': 'Failed to index document in vector database.'}, status=500)
+>>>>>>> 6fcbea783ef614ff42be29c73e618348bc621986
 
         return Response({
             'id': document.id, 
@@ -254,19 +327,50 @@ class DocumentListCreateView(APIView):
         }, status=status.HTTP_201_CREATED)
 
 def retrieve_rag_context(document_id, query_text):
+<<<<<<< HEAD
     # ... (content remains the same - Retrieval logic)
+=======
+    """
+    Generates query embedding using Gemini and retrieves relevant text chunks 
+    from ChromaDB via vector similarity search.
+    """
+>>>>>>> 6fcbea783ef614ff42be29c73e618348bc621986
     try:
         document = Document.objects.get(id=document_id)
         collection_name = document.collection_name
         
         if not collection_name: return None, None
 
+<<<<<<< HEAD
         client = get_gemini_client()
         query_embedding_response = client.models.embed_content(model=EMBEDDING_MODEL, contents=[query_text])
         query_embedding = query_embedding_response.embeddings[0].values
 
         chroma_client = get_chroma_client()
         collection = chroma_client.get_collection(name=collection_name)
+=======
+        # Initialize Gemini Client for Embedding
+        client = get_gemini_client()
+        
+        # Generate Query Embedding
+        print(f"Generating query embedding using {EMBEDDING_MODEL}...")
+        query_embedding_response = client.models.embed_content(
+            model=EMBEDDING_MODEL,
+            contents=[query_text],
+        )
+        
+        query_embedding = query_embedding_response.embeddings[0].values
+
+        # Using the query embedding to search Chroma
+        chroma_client = get_chroma_client()
+        collection = chroma_client.get_collection(name=collection_name)
+        
+        results = collection.query(
+            query_embeddings=[query_embedding], 
+            n_results=5, 
+            include=['documents']
+        )
+>>>>>>> 6fcbea783ef614ff42be29c73e618348bc621986
         
         results = collection.query(query_embeddings=[query_embedding], n_results=5, include=['documents'])
         context_texts = results['documents'][0] if results.get('documents') and results['documents'] and results['documents'][0] else []
@@ -276,8 +380,21 @@ def retrieve_rag_context(document_id, query_text):
         context = "\n---\n".join(context_texts)
         return context, document.filename
         
+<<<<<<< HEAD
     except Exception as e:
         print(f"Retrieval Error: {e}")
+=======
+    except Document.DoesNotExist:
+        return None, None
+    except ValueError as e:
+        print(f"Gemini Client Error during retrieval: {e}")
+        return None, None
+    except APIError as e:
+        print(f"Gemini Embedding API Error during retrieval: {e}")
+        return None, None
+    except Exception as e:
+        print(f"Chroma retrieval or general error: {e}")
+>>>>>>> 6fcbea783ef614ff42be29c73e618348bc621986
         return None, None
 
 
@@ -354,7 +471,15 @@ def _call_gemini_api(contents, system_prompt, use_google_search):
     # ... (content remains the same - LLM call logic)
     try:
         client = get_gemini_client()
+<<<<<<< HEAD
         config_params = {"system_instruction": system_prompt}
+=======
+        
+        config_params = {
+            "system_instruction": system_prompt
+        }
+        
+>>>>>>> 6fcbea783ef614ff42be29c73e618348bc621986
         if use_google_search:
             config_params["tools"] = [{"google_search": {}}]
 
@@ -363,10 +488,25 @@ def _call_gemini_api(contents, system_prompt, use_google_search):
             contents=contents,
             config=config_params
         )
+<<<<<<< HEAD
         return response.text if response.text else "I couldn't generate a response."
     except Exception as e:
         print(f"LLM Call Error: {e}")
         return f"Error: Failed to connect to the AI model. Details: {e}"
+=======
+
+        return response.text if response.text else "I couldn't generate a response."
+        
+    except ValueError as e:
+        print(f"Gemini Client Error: {e}")
+        return f"Error: Failed to connect to the AI model. Details: {e}"
+    except APIError as e:
+        print(f"Gemini API Error: {e}")
+        return f"Error: Failed to connect to the AI model. Details: {e}"
+    except Exception as e:
+        print(f"Unexpected Error during LLM call: {e}")
+        return "Error: An unexpected internal error occurred during the AI call."
+>>>>>>> 6fcbea783ef614ff42be29c73e618348bc621986
 
 
 # Removed @csrf_exempt
