@@ -50,15 +50,21 @@
 </head>
 <body class="p-0 sm:p-4 flex h-screen overflow-hidden">
 
-    <!-- Sidebar for Threads and Documents -->
     <aside class="w-1/4 bg-white shadow-xl p-4 flex flex-col h-full overflow-y-auto hidden md:block rounded-xl mr-4">
+        
+        <div class="mb-4 border-b pb-2">
+            <h2 class="text-xl font-bold text-gray-800">Welcome, {{ username }}!</h2>
+            <a href="{% url 'logout' %}" class="text-sm text-red-500 hover:text-red-700 font-semibold transition duration-150">
+                Log out
+            </a>
+        </div>
+        
         <h2 class="text-xl font-bold mb-4 border-b pb-2 text-gray-800">Chat</h2>
         <button onclick="createNewThread()" class="w-full mb-4 px-3 py-2 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 transition duration-150 flex items-center justify-center">
             <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
             New Chat
         </button>
         <div id="thread-list" class="space-y-2 mb-6 flex-grow">
-            <!-- Threads loaded here. -->
             {% for thread in threads %}
                 <div id="thread-container-{{ thread.id }}" class="thread-container flex items-center justify-between space-x-1 w-full">
                     <button 
@@ -90,12 +96,10 @@
         </div>
         
         <div id="document-list" class="space-y-2 mt-2">
-            <!-- Document buttons will be appended here -->
-        </div>
+            </div>
 
     </aside>
 
-    <!-- Main Chat Area -->
     <main class="flex-grow flex flex-col h-full bg-white rounded-xl shadow-2xl p-4 sm:p-6">
         <header class="border-b pb-4 mb-4">
             <h1 id="chat-title" class="text-2xl font-bold text-gray-800">Select or Start a Chat</h1>
@@ -104,12 +108,9 @@
             </p>
         </header>
 
-        <!-- Chat Window -->
         <div id="chat-container" class="flex-grow overflow-y-auto mb-4 p-2 -mx-2">
-            <!-- Messages go here -->
-        </div>
+            </div>
 
-        <!-- Input Form -->
         <footer class="mt-auto">
             <form onsubmit="handleSubmit(event)" class="flex space-x-3">
                 <input type="text" id="chat-input" placeholder="Ask a question..." 
@@ -136,6 +137,22 @@
         const threadList = document.getElementById('thread-list');
         const docList = document.getElementById('document-list');
 
+        // --- NEW CSRF Utility Function ---
+        const getCookie = (name) => {
+            let cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                const cookies = document.cookie.split(';');
+                for (let i = 0; i < cookies.length; i++) {
+                    const cookie = cookies[i].trim();
+                    if (cookie.startsWith(name + '=')) {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
+        }
+
         // --- Utility Functions ---
         
         const setUIState = (loading) => {
@@ -148,9 +165,10 @@
         const scrollChatToBottom = () => {
             chatContainer.scrollTop = chatContainer.scrollHeight;
         };
-
+        
         const addMessageToUI = (sender, content, isRag = false, docName = null, id = null) => {
-            const isUser = sender === 'user';
+             // ... (Function content remains the same)
+             const isUser = sender === 'user';
             const messageDiv = document.createElement('div');
             messageDiv.className = `flex mb-4 ${isUser ? 'justify-end' : 'justify-start'}`;
             if (id) messageDiv.id = id;
@@ -165,16 +183,35 @@
                 contentDiv.appendChild(ragIndicator);
             }
 
-            contentDiv.innerHTML += content;
+            contentDiv.innerHTML += content; 
             messageDiv.appendChild(contentDiv);
             chatContainer.appendChild(messageDiv);
             scrollChatToBottom();
         };
 
         const fetchJson = async (url, options = {}) => {
+            const csrfToken = getCookie('csrftoken');
+            
+            // --- FIX: Add CSRF token header for all unsafe methods (POST, DELETE, etc.) ---
+            if (csrfToken && options.method && !['GET', 'HEAD', 'OPTIONS'].includes(options.method.toUpperCase())) {
+                options.headers = {
+                    ...options.headers,
+                    'X-CSRFToken': csrfToken,
+                    // Note: Content-Type for JSON POST is already set implicitly/explicitly 
+                    // in caller functions that use fetchJson for JSON data.
+                };
+            }
+            
             const response = await fetch(url, options);
             if (!response.ok) {
                 let errorData = await response.text();
+                // Attempt to parse JSON error data if available
+                try {
+                    // Check for Django REST Framework style errors or custom errors
+                    errorData = JSON.parse(errorData).error || JSON.parse(errorData).detail || errorData; 
+                } catch (e) {
+                    // ignore
+                }
                 throw new Error(`API Error: ${response.status} - ${errorData}`);
             }
             return response.json();
@@ -183,6 +220,7 @@
         // --- Thread Management ---
 
         const updateThreadListUI = (newThread) => {
+             // ... (Function content remains the same)
             const threadId = newThread.thread_id;
             const title = newThread.title;
 
@@ -210,39 +248,42 @@
 
             container.appendChild(button);
             container.appendChild(deleteBtn);
-            threadList.prepend(container);
+            threadList.prepend(container); 
             loadThread(threadId, title);
         };
 
         const createNewThread = async () => {
+             // FIX: The user ID is no longer needed in the body since views.py uses request.user
             try {
                 const newThread = await fetchJson('/api/thread/create/', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({user_id: USER_ID})
+                    body: JSON.stringify({}) // Empty body is sufficient
                 });
                 updateThreadListUI(newThread);
             } catch (error) {
                 console.error("Error creating thread:", error);
+                document.getElementById('upload-status').textContent = `Error creating thread: ${error.message}`;
             }
         };
 
         const loadThread = async (threadId, title) => {
+            // ... (Function content remains the same)
             currentThreadId = threadId;
             document.getElementById('chat-title').textContent = title;
             chatContainer.innerHTML = '';
             setUIState(true);
 
-            // update each msgs active thread container
             document.querySelectorAll('.thread-container').forEach(container => container.classList.remove('active'));
-            document.getElementById(`thread-container-${threadId}`).classList.add('active');
+            const activeContainer = document.getElementById(`thread-container-${threadId}`);
+            if (activeContainer) {
+                activeContainer.classList.add('active');
+            }
 
             try {
                 const data = await fetchJson(`/api/thread/${threadId}/messages/`);
                 
-                // Clear and re-populate chat
                 data.messages.forEach(msg => {
-                    // Check if the response was RAG based on current doc context
                     const docName = msg.is_rag && currentActiveDocumentName ? currentActiveDocumentName : null;
                     addMessageToUI(msg.sender, msg.content, msg.is_rag, docName);
                 });
@@ -255,17 +296,15 @@
             }
         };
 
-        // This is for deleting threads
         const deleteThread = async (threadId, threadTitle) => {
-            document.getElementById('upload-status').textContent = `Deleting chat thread '${threadTitle}'...`;
+            // ... (Function content remains the same)
+             document.getElementById('upload-status').textContent = `Deleting chat thread '${threadTitle}'...`;
 
             try {
-                // Send DELETE request to the API
                 await fetchJson(`/api/thread/${threadId}/`, {
                     method: 'DELETE',
                 });
 
-                // 1. Remove from UI
                 const container = document.getElementById(`thread-container-${threadId}`);
                 if (container) {
                     container.remove();
@@ -273,31 +312,29 @@
 
                 document.getElementById('upload-status').textContent = `Thread '${threadTitle}' successfully deleted.`;
                 
-                // 2. Handle if the active thread was deleted
                 if (currentThreadId == threadId) {
                     currentThreadId = null;
                     chatContainer.innerHTML = '';
                     document.getElementById('chat-title').textContent = "Start a New Conversation";
                     
-                    // Try to load the next available thread
                     const remainingContainers = threadList.querySelectorAll('.thread-container');
                     if (remainingContainers.length > 0) {
-                        // The button is the first child of the container
                         const newFirstThreadBtn = remainingContainers[0].querySelector('.thread-item');
                         loadThread(newFirstThreadBtn.dataset.id, newFirstThreadBtn.dataset.title);
                     } else {
-                        setUIState(false); // Enable input for new chat
+                        setUIState(false);
                     }
                 }
             } catch (error) {
                 console.error("Error deleting thread:", error);
-                document.getElementById('upload-status').textContent = `Error: Could not delete thread '${threadTitle}'.`;
+                document.getElementById('upload-status').textContent = `Error: Could not delete thread '${threadTitle}'. ${error.message}`;
             }
         };
 
         // --- RAG/Document Management Logic ---
         
         const loadDocuments = async () => {
+             // ... (Function content remains the same)
             try {
                 const documents = await fetchJson(`/api/documents/`);
                 docList.innerHTML = '';
@@ -310,6 +347,7 @@
         };
 
         const createDocumentButton = (docId, docName) => {
+            // ... (Function content remains the same)
             const container = document.createElement('div');
             container.id = `doc-container-${docId}`;
             container.className = 'flex items-center justify-between space-x-1';
@@ -322,7 +360,6 @@
             docButton.setAttribute('data-doc-id', docId);
             docButton.setAttribute('data-doc-name', docName);
             docButton.onclick = (e) => {
-                // Prevent event from propagating if clicked on the button itself
                 e.stopPropagation();
                 setActiveDocument(docId, docName, docButton);
             };
@@ -342,25 +379,20 @@
             docList.appendChild(container);
         };
         
-        /**
-         * Deletes a RAG document and updates the UI
-         */
         const deleteDocument = async (docId, docName) => {
+             // ... (Function content remains the same)
             document.getElementById('upload-status').textContent = `Deleting document '${docName}'...`;
 
             try {
-                // Send DELETE request to the API
                 await fetchJson(`/api/documents/${docId}/`, {
                     method: 'DELETE',
                 });
 
-                // Remove the document container from the UI
                 const container = document.getElementById(`doc-container-${docId}`);
                 if (container) {
                     container.remove();
                 }
                 
-                // If the deleted document was active, clear the RAG context
                 if (currentActiveDocumentId === docId) {
                     clearActiveDocument();
                 }
@@ -369,10 +401,11 @@
                 
             } catch (error) {
                 console.error("Error deleting document:", error);
-                document.getElementById('upload-status').textContent = `Error: Could not delete document '${docName}'.`;
+                document.getElementById('upload-status').textContent = `Error: Could not delete document '${docName}'. ${error.message}`;
             }
         };
 
+        // --- FIX IS APPLIED HERE ---
         const handleDocumentUpload = async () => {
             const fileInput = document.getElementById('document-file');
             const file = fileInput.files[0];
@@ -386,35 +419,61 @@
             uploadStatus.textContent = 'Uploading and processing... This may take a moment.';
             setUIState(true);
 
+            // --- Get CSRF Token for the POST request ---
+            const csrfToken = getCookie('csrftoken');
+            if (!csrfToken) {
+                 uploadStatus.textContent = 'Error: CSRF token not found. Cannot upload.';
+                 setUIState(false);
+                 return;
+            }
+
             const formData = new FormData();
             formData.append('file', file);
+            // Note: user_id is passed for view-side security check, but should be removed 
+            // if you strictly follow REST principles and only rely on request.user
             formData.append('user_id', USER_ID); 
 
             try {
-                const data = await fetchJson('/api/documents/', {
+                // Use standard fetch and handle response manually since we're using FormData
+                const response = await fetch('/api/documents/', {
                     method: 'POST',
-                    body: formData
+                    // FIX: Include the CSRF token in the header
+                    headers: {
+                        'X-CSRFToken': csrfToken,
+                    },
+                    body: formData // Note: Content-Type is automatically set to multipart/form-data
                 });
+
+                if (!response.ok) {
+                    let errorData = await response.text();
+                    try {
+                        errorData = JSON.parse(errorData).error || JSON.parse(errorData).detail || errorData; 
+                    } catch (e) { /* ignore */ }
+                    throw new Error(`API Error: ${response.status} - ${errorData}`);
+                }
+                
+                const data = await response.json();
                 
                 uploadStatus.textContent = data.message;
                 createDocumentButton(data.id, data.filename);
-                // Ensure we select the button inside its new container
                 setActiveDocument(data.id, data.filename, document.getElementById(`doc-container-${data.id}`).querySelector('.doc-button'));
 
             } catch (error) {
                 console.error("Error uploading document:", error);
-                uploadStatus.textContent = `Error: Could not process file.`;
+                uploadStatus.textContent = `Error: Could not process file. ${error.message}`;
             } finally {
                 fileInput.value = ''; // Clear file input
                 setUIState(false);
             }
         };
+        // --- END FIX ---
+
 
         const setActiveDocument = (docId, docName, buttonElement) => {
+             // ... (Function content remains the same)
             currentActiveDocumentId = docId;
             currentActiveDocumentName = docName;
             
-            // Visually highlight the active document
             document.querySelectorAll('.doc-button').forEach(btn => {
                 btn.classList.remove('bg-green-500', 'text-white', 'hover:bg-green-600');
                 btn.classList.add('bg-gray-100', 'text-gray-700', 'hover:bg-gray-200');
@@ -428,7 +487,6 @@
                 <button onclick="clearActiveDocument()" class="text-red-500 hover:text-red-700 underline text-sm ml-1">Clear</button>
             `;
 
-             // Reload the current chat to show RAG status if user has selected a thread
              if(currentThreadId) {
                 const currentThreadButton = document.getElementById(`thread-btn-${currentThreadId}`);
                 if(currentThreadButton) {
@@ -438,6 +496,7 @@
         };
 
         const clearActiveDocument = () => {
+             // ... (Function content remains the same)
             currentActiveDocumentId = null;
             currentActiveDocumentName = null;
             document.querySelectorAll('.doc-button').forEach(btn => {
@@ -445,7 +504,6 @@
                 btn.classList.add('bg-gray-100', 'text-gray-700', 'hover:bg-gray-200');
             });
             document.getElementById('current-rag-status').innerHTML = 'RAG Mode: Inactive (Standard Chat)';
-             // Reload the current chat to reflect the change
             if(currentThreadId) {
                 const currentThreadButton = document.getElementById(`thread-btn-${currentThreadId}`);
                 if(currentThreadButton) {
@@ -460,7 +518,6 @@
             event.preventDefault();
             
             if (!currentThreadId) {
-                // If no thread is selected, create a new one first
                 await createNewThread();
             }
             if (isFetching || !currentThreadId) return;
@@ -472,7 +529,6 @@
 
             addMessageToUI('user', userMessage);
             
-            // Show loading state
             const loadingMsgId = 'loading-' + Date.now();
             addMessageToUI('assistant', '<div id="' + loadingMsgId + '">Processing...</div>', 
                 !!currentActiveDocumentId, currentActiveDocumentName
@@ -489,7 +545,6 @@
                     })
                 });
 
-                // Update the loading message with the final response
                 const loadingElement = document.getElementById(loadingMsgId);
                 if (loadingElement) {
                     loadingElement.parentElement.innerHTML = data.response; 
