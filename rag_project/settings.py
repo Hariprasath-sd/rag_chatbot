@@ -26,10 +26,9 @@ GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '')
 SECRET_KEY = 'django-insecure-rgcncx4!quzi6wv@g4q*ui$9q#%q-g@y=02#+n%xl%m7#%na)&'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = False
 
 ALLOWED_HOSTS = ['*']
-
 
 # Application definition
 
@@ -124,23 +123,6 @@ STATIC_URL = 'static/'
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
-
-# Default primary key field type
-# https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
-
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
-
-# File: rag_project/settings.py
-
-# ... (lines 1-137: existing configuration)
-
-# Default primary key field type
-# https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
-
-DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
-
-# --- Authentication Configuration (NEW) ---
-# Redirect URL after successful login (uses the 'index' name from rag_chat_app/urls.py)
 LOGIN_REDIRECT_URL = 'index'
-# URL Django redirects to when a user needs to log in (uses the 'login' name from rag_chat_app/urls.py)
 LOGIN_URL = 'login'
