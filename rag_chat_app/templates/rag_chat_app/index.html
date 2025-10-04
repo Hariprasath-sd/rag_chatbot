@@ -123,21 +123,18 @@
     </main>
 
     <script>
-        // Global Variables
         const USER_ID = {{ user_id }}; 
         let currentThreadId = null; 
         let currentActiveDocumentId = null; 
         let currentActiveDocumentName = null; 
         let isFetching = false;
         
-        // DOM Elements
         const chatContainer = document.getElementById('chat-container');
         const chatInput = document.getElementById('chat-input');
         const sendBtn = document.getElementById('send-btn');
         const threadList = document.getElementById('thread-list');
         const docList = document.getElementById('document-list');
 
-        // --- NEW CSRF Utility Function ---
         const getCookie = (name) => {
             let cookieValue = null;
             if (document.cookie && document.cookie !== '') {
@@ -152,8 +149,6 @@
             }
             return cookieValue;
         }
-
-        // --- Utility Functions ---
         
         const setUIState = (loading) => {
             isFetching = loading;
@@ -166,9 +161,8 @@
             chatContainer.scrollTop = chatContainer.scrollHeight;
         };
         
-        const addMessageToUI = (sender, content, isRag = false, docName = null, id = null) => {
-             // ... (Function content remains the same)
-             const isUser = sender === 'user';
+        const addMessageToUI = (sender, content, isRag = false, docName = null, id = null) => { 
+            const isUser = sender === 'user';
             const messageDiv = document.createElement('div');
             messageDiv.className = `flex mb-4 ${isUser ? 'justify-end' : 'justify-start'}`;
             if (id) messageDiv.id = id;
@@ -192,35 +186,26 @@
         const fetchJson = async (url, options = {}) => {
             const csrfToken = getCookie('csrftoken');
             
-            // --- FIX: Add CSRF token header for all unsafe methods (POST, DELETE, etc.) ---
             if (csrfToken && options.method && !['GET', 'HEAD', 'OPTIONS'].includes(options.method.toUpperCase())) {
                 options.headers = {
                     ...options.headers,
                     'X-CSRFToken': csrfToken,
-                    // Note: Content-Type for JSON POST is already set implicitly/explicitly 
-                    // in caller functions that use fetchJson for JSON data.
                 };
             }
             
             const response = await fetch(url, options);
             if (!response.ok) {
                 let errorData = await response.text();
-                // Attempt to parse JSON error data if available
                 try {
-                    // Check for Django REST Framework style errors or custom errors
                     errorData = JSON.parse(errorData).error || JSON.parse(errorData).detail || errorData; 
                 } catch (e) {
-                    // ignore
                 }
                 throw new Error(`API Error: ${response.status} - ${errorData}`);
             }
             return response.json();
         };
 
-        // --- Thread Management ---
-
         const updateThreadListUI = (newThread) => {
-             // ... (Function content remains the same)
             const threadId = newThread.thread_id;
             const title = newThread.title;
 
@@ -253,12 +238,11 @@
         };
 
         const createNewThread = async () => {
-             // FIX: The user ID is no longer needed in the body since views.py uses request.user
             try {
                 const newThread = await fetchJson('/api/thread/create/', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({}) // Empty body is sufficient
+                    body: JSON.stringify({})
                 });
                 updateThreadListUI(newThread);
             } catch (error) {
@@ -268,7 +252,6 @@
         };
 
         const loadThread = async (threadId, title) => {
-            // ... (Function content remains the same)
             currentThreadId = threadId;
             document.getElementById('chat-title').textContent = title;
             chatContainer.innerHTML = '';
@@ -297,7 +280,6 @@
         };
 
         const deleteThread = async (threadId, threadTitle) => {
-            // ... (Function content remains the same)
              document.getElementById('upload-status').textContent = `Deleting chat thread '${threadTitle}'...`;
 
             try {
@@ -331,10 +313,7 @@
             }
         };
 
-        // --- RAG/Document Management Logic ---
-        
         const loadDocuments = async () => {
-             // ... (Function content remains the same)
             try {
                 const documents = await fetchJson(`/api/documents/`);
                 docList.innerHTML = '';
@@ -347,7 +326,6 @@
         };
 
         const createDocumentButton = (docId, docName) => {
-            // ... (Function content remains the same)
             const container = document.createElement('div');
             container.id = `doc-container-${docId}`;
             container.className = 'flex items-center justify-between space-x-1';
@@ -380,7 +358,6 @@
         };
         
         const deleteDocument = async (docId, docName) => {
-             // ... (Function content remains the same)
             document.getElementById('upload-status').textContent = `Deleting document '${docName}'...`;
 
             try {
@@ -405,7 +382,6 @@
             }
         };
 
-        // --- FIX IS APPLIED HERE ---
         const handleDocumentUpload = async () => {
             const fileInput = document.getElementById('document-file');
             const file = fileInput.files[0];
@@ -419,7 +395,6 @@
             uploadStatus.textContent = 'Uploading and processing... This may take a moment.';
             setUIState(true);
 
-            // --- Get CSRF Token for the POST request ---
             const csrfToken = getCookie('csrftoken');
             if (!csrfToken) {
                  uploadStatus.textContent = 'Error: CSRF token not found. Cannot upload.';
@@ -429,26 +404,22 @@
 
             const formData = new FormData();
             formData.append('file', file);
-            // Note: user_id is passed for view-side security check, but should be removed 
-            // if you strictly follow REST principles and only rely on request.user
             formData.append('user_id', USER_ID); 
 
             try {
-                // Use standard fetch and handle response manually since we're using FormData
                 const response = await fetch('/api/documents/', {
                     method: 'POST',
-                    // FIX: Include the CSRF token in the header
                     headers: {
                         'X-CSRFToken': csrfToken,
                     },
-                    body: formData // Note: Content-Type is automatically set to multipart/form-data
+                    body: formData
                 });
 
                 if (!response.ok) {
                     let errorData = await response.text();
                     try {
                         errorData = JSON.parse(errorData).error || JSON.parse(errorData).detail || errorData; 
-                    } catch (e) { /* ignore */ }
+                    } catch (e) {}
                     throw new Error(`API Error: ${response.status} - ${errorData}`);
                 }
                 
@@ -462,15 +433,12 @@
                 console.error("Error uploading document:", error);
                 uploadStatus.textContent = `Error: Could not process file. ${error.message}`;
             } finally {
-                fileInput.value = ''; // Clear file input
+                fileInput.value = '';
                 setUIState(false);
             }
         };
-        // --- END FIX ---
-
 
         const setActiveDocument = (docId, docName, buttonElement) => {
-             // ... (Function content remains the same)
             currentActiveDocumentId = docId;
             currentActiveDocumentName = docName;
             
@@ -496,7 +464,6 @@
         };
 
         const clearActiveDocument = () => {
-             // ... (Function content remains the same)
             currentActiveDocumentId = null;
             currentActiveDocumentName = null;
             document.querySelectorAll('.doc-button').forEach(btn => {
@@ -511,8 +478,6 @@
                 }
             }
         };
-
-        // --- Core Interaction ---
 
         const handleSubmit = async (event) => {
             event.preventDefault();
@@ -569,7 +534,6 @@
         };
 
         window.onload = () => {
-            // Load documents for the sidebar
             loadDocuments();
 
             const firstThreadContainer = threadList.querySelector('.thread-container');
@@ -579,7 +543,6 @@
             } else {
                  document.getElementById('chat-title').textContent = "Start a New Conversation";
             }
-            // Ensure initial state is set
             setUIState(false); 
         };
     </script>
